@@ -469,3 +469,11 @@ SDK/NDK/의존성/로그 보호/ProGuard는 변경하지 않았다. Flutter cont
 릴리스는 `v0.1.9`의 pre-release로 ARM64/32비트 ARM 미실행과 debug 서명을 명시한다. APK3종+SHA256SUMS.txt를 묶고 업로드된 크기/서버 SHA-256을 검증한 뒤 게시한다. 현재 앱의 실제 기능/품질 검증은 위0.1.9 기록을 따른다. 이 게시 준비를 새로운 기기·언어 검증으로 세지 않는다.
 
 게시용 clone에서 Flutter 분석 오류0건과 테스트34개 통과를 확인했다. Markdown 상대 링크/제외 파일/자격 증명 패턴/공백 검사도 통과했다. 기존 LICENSE·학습 계획·iOS scaffold의 변경은 없으며 원격 main의 동시 변경도 없었다.
+
+## 2026-11-20 · GitHub 업데이트와 v0.1.9 게시 완료
+
+소스 커밋 `5d3eb4deabcc7944d9935a7cd62e94660000310a`를 기존 main에 fast-forward push했다. 같은 커밋을 가리키는 `v0.1.9` 태그와 [개발 미리보기 릴리스](https://github.com/Haran1426/Live-screen-translation/releases/tag/v0.1.9)를 게시했다. draft=false/prerelease=true이며 저장소 비공개 설정을 유지했다.
+
+ARM64/armeabi-v7a/x86_64 APK와 SHA256SUMS.txt의 첨부4개가 모두 uploaded 상태이고 서버 SHA-256·크기가 원본과 일치함을 확인했다. ARM64 APK 해시는 `4e3730bfde0d7a9f9110ab832bd6224641bf7c94b31b329ed8a58ee4444f18fd`, ARMv7은 `2c3123f7731e4b703e5b3b395a00814c8a16b4484133252b6a89bdcbb0ad2799`, x86_64는 `235d908c52603815af1f5ce66bf14dce950c8bc3a3a529649cfaa3727247e28c`다. 이후 변경은 이 게시 결과를 기록하는 문서뿐이며 앱 소스/릴리스 파일은 바꾸지 않았다.
+
+연습 문장 전용·실제/민감한 데이터 사용 금지·ARM64 실기기 미검증·기존 debug 서명 제한을 릴리스 본문에 명시했다. 정식/스토어 배포나 정기 실행의 자동 push를 승인한 것으로 확대하지 않는다. 기기별 남은 검증과 SDK 로그 보호 회귀는 기존 백로그를 따른다.
