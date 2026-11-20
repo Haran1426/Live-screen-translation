@@ -1,6 +1,6 @@
 # 설치 배포 준비
 
-현재 v0.1.9 APK는 다운로드·설치할 수 있지만 개발용 서명과 샘플 전용 제한이 있다. 파일을 다운로드할 수 있다는 사실과 실제 사용자 화면에서 사용 가능한 정식판은 구분한다. GitHub의 pre-release 표시만 없애서 검증을 대신하지 않는다.
+GitHub의 Android 테스트 APK는 개발용 서명과 샘플 전용 제한을 적용한다. 정식 설치판은 아래 기기 검증과 배포 서명 조건을 거친다.
 
 ## 정식 릴리스 통과 조건
 
@@ -13,6 +13,8 @@
 
 미충족 항목이 있으면 정식판 게시를 보류한다. 스토어 등록은 GitHub 설치 배포와 별도다.
 
+Google Play는 [스토어 제출 준비](GOOGLE_PLAY.md)에 따라 최종 패키지 이름, Play 앱 서명, 데이터 보안, 화면 공유 신고와 실제 기기 테스트를 확인한다. 공개 제출에 사용하는 파일은 업로드 키로 서명한 Android App Bundle이다.
+
 ## 배포용 서명
 
 일반 `flutter build apk --release --split-per-abi`는 배포용 키가 없거나 debug 인증서이면 실패한다. 자동 debug 서명 fallback은 없다. `android/key.properties.example`의 형식으로 비공개 속성 파일을 준비한다. 기본 경로는 Git에서 제외한 `android/key.properties`이고, 저장소 밖 파일은 `SCREENLINGO_KEY_PROPERTIES` 환경 변수로 지정한다. 상대 `storeFile`은 속성 파일이 있는 폴더를 기준으로 해석한다.
@@ -21,6 +23,8 @@
 $env:SCREENLINGO_KEY_PROPERTIES = 'D:/private/ScreenLingo/key.properties'
 flutter build apk --release --split-per-abi
 ```
+
+Play 업로드 번들은 최종 업로드 키 설정으로 `flutter build appbundle --release`를 실행해 만든다.
 
 `verifyReleaseSigning`은 키 파일/필수 값/별칭/개인키 비밀번호/인증서 유효기간과 Android Debug 인증서 여부를 검사한다. 검사 실패에 비밀 값이나 원래 예외를 출력하지 않는다. 이 검사는 기기 QA를 대신하지 않는다. 환경 변수에 QA 예외가 남아 있으면 배포용 빌드를 진행하지 않는다.
 

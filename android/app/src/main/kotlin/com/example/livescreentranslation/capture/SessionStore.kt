@@ -3,7 +3,19 @@ package com.example.livescreentranslation.capture
 /** Main-thread-only session state. No screenshots or translation history are persisted. */
 object SessionStore {
     var appVisible = false
+        set(value) {
+            val wasAllowed = captureAllowed
+            field = value
+            if (wasAllowed != captureAllowed) onCaptureVisibilityChanged?.invoke()
+        }
     var practiceVisible = false
+        set(value) {
+            val wasAllowed = captureAllowed
+            field = value
+            if (wasAllowed != captureAllowed) onCaptureVisibilityChanged?.invoke()
+        }
+    val captureAllowed: Boolean get() = !appVisible || practiceVisible
+    var onCaptureVisibilityChanged: (() -> Unit)? = null
     private val listeners = mutableSetOf<(Map<String, Any>) -> Unit>()
     var phase = "idle"
         private set

@@ -40,6 +40,8 @@ import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlin.math.max
+import kotlin.math.ceil
+import kotlin.math.floor
 
 class ScreenTranslationService : Service() {
     private val main = Handler(Looper.getMainLooper())
@@ -67,6 +69,7 @@ class ScreenTranslationService : Service() {
     private var consecutiveErrors = 0
     private val cache = LruCache<String, String>(160)
     private var previousSelection: FrameTextSelection? = null
+    private var previousTranslations = emptyList<String>()
     private val stateListener: (Map<String, Any>) -> Unit = { overlay?.render(it) }
 
     private val screenOff = object : BroadcastReceiver() {
@@ -87,7 +90,7 @@ class ScreenTranslationService : Service() {
                 fail("다른 앱 위에 표시 권한이 해제되어 번역을 종료했어요.")
                 return
             }
-            if (!paused && !frames.busy && (!SessionStore.appVisible || SessionStore.practiceVisible)) captureFrame()
+            if (!paused && !frames.busy && SessionStore.captureAllowed) captureFrame()
             main.postDelayed(this, config.intervalMs.toLong())
         }
     }
@@ -99,6 +102,10 @@ class ScreenTranslationService : Service() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF), RECEIVER_NOT_EXPORTED)
         else registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))
         SessionStore.addListener(stateListener)
+        SessionStore.onCaptureVisibilityChanged = {
+            frames.invalidate()
+            overlay?.clearPositions()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -123,7 +130,13 @@ class ScreenTranslationService : Service() {
                 "ko" -> TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
                 else -> TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             }
-            overlay = TranslationOverlay(this, ::togglePause, ::stopSelf, config.cardTextSp, config.cardHeightDp).also { it.show() }
+            overlay = TranslationOverlay(
+                this, ::togglePause, ::stopSelf, config.cardTextSp, config.cardHeightDp,
+                onPresentationChanged = {
+                    frames.invalidate()
+                    if (!paused && SessionStore.captureAllowed && !frames.busy) captureFrame()
+                },
+            ).also { it.show() }
             @Suppress("DEPRECATION")
             val data = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra("captureData", Intent::class.java)
                 else intent.getParcelableExtra<Intent>("captureData")
@@ -170,13 +183,32 @@ class ScreenTranslationService : Service() {
     private fun captureFrame() {
         val sourceReader = reader ?: return
         val ticket = frames.begin() ?: return
+        if (overlay?.hidePositionsForCapture() == true) {
+            // Free a queued buffer so the compositor can submit the unobscured image.
+            worker.post { runCatching { sourceReader.acquireLatestImage()?.close() } }
+            // The display needs time to composite a frame without our secure layer.
+            val hiddenAt = System.nanoTime()
+            main.postDelayed({
+                if (valid(ticket)) readFrame(sourceReader, ticket, hiddenAt + 32_000_000L)
+                else frames.complete(ticket)
+            }, 120)
+        } else readFrame(sourceReader, ticket)
+    }
+
+    private fun readFrame(
+        sourceReader: ImageReader,
+        ticket: FrameWorkGuard.Ticket,
+        earliestFrameNanos: Long = 0L,
+        retries: Int = 3,
+    ) {
         val frameWidth = width
         val frameHeight = height
-        val exclusions = overlay?.exclusionRects().orEmpty() + overlay?.systemBarRects(width, height).orEmpty()
+        val exclusions = overlay?.exclusionRects().orEmpty() + overlay?.systemBarRects(frameWidth, frameHeight).orEmpty()
         worker.post {
             var bitmap: Bitmap? = null
             try {
                 sourceReader.acquireLatestImage()?.use { image ->
+                    if (earliestFrameNanos != 0L && image.timestamp < earliestFrameNanos) return@use
                     val plane = image.planes[0]
                     val paddedWidth = plane.rowStride / plane.pixelStride
                     val padded = Bitmap.createBitmap(paddedWidth, frameHeight, Bitmap.Config.ARGB_8888)
@@ -192,10 +224,15 @@ class ScreenTranslationService : Service() {
                 }
                 val frame = bitmap
                 main.post {
-                    if (!valid(ticket) || frame == null) {
+                    if (valid(ticket) && frame == null && earliestFrameNanos != 0L && retries > 0) {
+                        main.postDelayed({
+                            if (valid(ticket)) readFrame(sourceReader, ticket, earliestFrameNanos, retries - 1)
+                            else frames.complete(ticket)
+                        }, 45)
+                    } else if (!valid(ticket) || frame == null) {
                         frame?.recycle()
                         frames.complete(ticket)
-                    } else recognize(frame, exclusions, frameWidth.toFloat() / frame.width, ticket)
+                    } else recognize(frame, exclusions, frameWidth, frameHeight, ticket)
                 }
             } catch (error: Exception) {
                 bitmap?.recycle()
@@ -207,7 +244,7 @@ class ScreenTranslationService : Service() {
         }
     }
 
-    private fun recognize(bitmap: Bitmap, exclusions: List<Rect>, scale: Float, ticket: FrameWorkGuard.Ticket) {
+    private fun recognize(bitmap: Bitmap, exclusions: List<Rect>, frameWidth: Int, frameHeight: Int, ticket: FrameWorkGuard.Ticket) {
         val engine = recognizer
         if (engine == null || !valid(ticket)) { bitmap.recycle(); frames.complete(ticket); return }
         val task = try {
@@ -221,23 +258,33 @@ class ScreenTranslationService : Service() {
         task
             .addOnSuccessListener { result ->
                 if (!valid(ticket)) { frames.complete(ticket); return@addOnSuccessListener }
-                val selection = FrameTextSelection.select(result.textBlocks.filter { block ->
-                    val box = block.boundingBox ?: return@filter false
-                    val originalBox = Rect((box.left * scale).toInt(), (box.top * scale).toInt(), (box.right * scale).toInt(), (box.bottom * scale).toInt())
-                    exclusions.none { Rect.intersects(it, originalBox) }
-                }.map { it.text })
+                val scaleX = frameWidth.toFloat() / bitmap.width
+                val scaleY = frameHeight.toFloat() / bitmap.height
+                val candidates = result.textBlocks.mapNotNull { block ->
+                    val box = block.boundingBox ?: return@mapNotNull null
+                    val screenBox = Rect(
+                        floor(box.left * scaleX).toInt(), floor(box.top * scaleY).toInt(),
+                        ceil(box.right * scaleX).toInt(), ceil(box.bottom * scaleY).toInt(),
+                    )
+                    if (screenBox.isEmpty || exclusions.any { Rect.intersects(it, screenBox) }) null
+                    else block.text to screenBox
+                }
+                val selection = FrameTextSelection.select(candidates.map { it.first }, config.source)
+                val bounds = selection.candidateIndices.map { candidates[it].second }
                 if (selection.texts.isEmpty()) {
-                    previousSelection = null
+                    clearPreviousTranslation()
                     consecutiveErrors = 0
-                    SessionStore.update("running", "읽을 글자를 찾고 있어요. 카드에 가려졌다면 접어 주세요.", emptyList(), 0)
+                    SessionStore.update("running", "읽을 글자를 찾고 있어요.", emptyList(), 0)
                     frames.complete(ticket)
                 } else if (selection.texts == previousSelection?.texts) {
+                    // A scroll can move unchanged text. Always use the latest coordinates.
+                    renderPositions(selection, bounds, previousTranslations)
                     if (selection != previousSelection) {
                         previousSelection = selection
                         SessionStore.update(message = selection.message(config.source, config.target))
                     }
                     frames.complete(ticket)
-                } else translate(selection, ticket)
+                } else translate(selection, bounds, ticket)
             }
             .addOnFailureListener {
                 if (valid(ticket)) frameError()
@@ -250,7 +297,7 @@ class ScreenTranslationService : Service() {
             }
     }
 
-    private fun translate(selection: FrameTextSelection, ticket: FrameWorkGuard.Ticket) {
+    private fun translate(selection: FrameTextSelection, bounds: List<Rect>, ticket: FrameWorkGuard.Ticket) {
         val texts = selection.texts
         val engine = translator ?: run { frames.complete(ticket); return }
         val tasks = try {
@@ -270,17 +317,35 @@ class ScreenTranslationService : Service() {
         Tasks.whenAllSuccess<String>(tasks).addOnSuccessListener { translations ->
             if (!valid(ticket)) return@addOnSuccessListener
             previousSelection = selection
+            previousTranslations = translations
             consecutiveErrors = 0
             val blocks = texts.zip(translations).map { (original, translated) -> mapOf("original" to original, "translated" to translated) }
             SessionStore.update("running", selection.message(config.source, config.target), blocks, SystemClock.elapsedRealtime() - ticket.startedAt)
+            renderPositions(selection, bounds, translations)
         }.addOnFailureListener {
             if (valid(ticket)) frameError()
         }.addOnCompleteListener { frames.complete(ticket) }
     }
 
+    private fun renderPositions(selection: FrameTextSelection, bounds: List<Rect>, translations: List<String>) {
+        val currentOverlay = overlay ?: return
+        if (!currentOverlay.positionsEnabled) return
+        val positioned = translations.mapIndexedNotNull { index, text ->
+            if (index in selection.shortenedIndices || text == selection.texts[index]) null
+            else PositionedTranslation(bounds[index], text)
+        }
+        currentOverlay.renderPositions(positioned, width, height)
+    }
+
+    private fun clearPreviousTranslation() {
+        previousSelection = null
+        previousTranslations = emptyList()
+        overlay?.clearPositions()
+    }
+
     private fun frameError() {
         consecutiveErrors++
-        previousSelection = null
+        clearPreviousTranslation()
         if (consecutiveErrors >= 3) fail("화면을 처리하지 못해 번역을 종료했어요. 언어 준비와 화면 공유를 확인해 주세요.")
         else SessionStore.update(message = "화면을 읽지 못했어요. 잠시 후 다시 확인해요.", blocks = emptyList())
     }
@@ -289,7 +354,7 @@ class ScreenTranslationService : Service() {
         if (projection == null || stopped) return
         paused = !paused
         frames.invalidate()
-        previousSelection = null
+        clearPreviousTranslation()
         cache.evictAll()
         SessionStore.update(
             if (paused) "paused" else "running",
@@ -309,7 +374,7 @@ class ScreenTranslationService : Service() {
         if (display == null) return
         try {
             frames.invalidate()
-            previousSelection = null
+            clearPreviousTranslation()
             val old = reader
             val replacement = newReader(newWidth, newHeight)
             reader = replacement
@@ -325,7 +390,8 @@ class ScreenTranslationService : Service() {
         }
     }
 
-    private fun valid(ticket: FrameWorkGuard.Ticket) = frames.accepts(ticket) && !stopped && !paused
+    private fun valid(ticket: FrameWorkGuard.Ticket) =
+        frames.accepts(ticket) && !stopped && !paused && SessionStore.captureAllowed
 
     private fun newReader(width: Int, height: Int) = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
@@ -353,6 +419,7 @@ class ScreenTranslationService : Service() {
         main.removeCallbacksAndMessages(null)
         runCatching { unregisterReceiver(screenOff) }
         SessionStore.removeListener(stateListener)
+        SessionStore.onCaptureVisibilityChanged = null
         overlay?.close()
         overlay = null
         projection?.unregisterCallback(projectionCallback)
@@ -369,7 +436,7 @@ class ScreenTranslationService : Service() {
         translator?.close()
         translator = null
         cache.evictAll()
-        previousSelection = null
+        clearPreviousTranslation()
         SessionStore.clear(failureMessage)
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()

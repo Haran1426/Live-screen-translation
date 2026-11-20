@@ -4,6 +4,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FrameTextSelectionTest {
+    @Test fun layoutLineBreaksKeepWordsAndUnspacedScriptsTogether() {
+        val result = FrameTextSelection.select(listOf(
+            "Do not\r\n  open the door.",
+            "図書\n館へ行きます。",
+            "문을\n열지 마세요.",
+            "图书\n馆今天开放。",
+        ))
+        assertEquals(listOf("Do not open the door.", "図書館へ行きます。", "문을 열지 마세요.", "图书馆今天开放。"), result.texts)
+    }
+
+    @Test fun boundedSentenceAndSkippedFragmentsKeepTheirSourceIndices() {
+        val wholeSentences = "The library is closed today. ".repeat(19).trimEnd()
+        val longText = "$wholeSentences Unordered " + "text ".repeat(40)
+        val result = FrameTextSelection.select(listOf("x", "First visible block", " ", longText, "Another block"))
+        assertEquals(listOf(1, 3, 4), result.candidateIndices)
+        assertEquals(setOf(1), result.shortenedIndices)
+        assertEquals(wholeSentences, result.texts[1])
+    }
+
     @Test fun exactBoundariesDoNotClaimMissingText() {
         val result = FrameTextSelection.select(List(12) { "A".repeat(600) })
         assertEquals(12, result.texts.size)

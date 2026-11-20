@@ -6,6 +6,8 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.input.InputManager
+import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -21,19 +23,21 @@ import android.widget.TextView
 import kotlin.math.abs
 
 /** Secure overlay windows prevent our translated text from feeding back into OCR. */
-class TranslationOverlay(
+internal class TranslationOverlay(
     private val context: Context,
     private val onPause: () -> Unit,
     private val onStop: () -> Unit,
     private val cardTextSp: Int = 16,
     private val cardHeightDp: Int = 300,
+    private val onPresentationChanged: () -> Unit,
 ) {
     private val manager = context.getSystemService(WindowManager::class.java)
     private val accent = Color.rgb(66, 99, 235)
     private val ink = Color.rgb(32, 43, 59)
     private val muted = Color.rgb(102, 112, 133)
     private val border = Color.rgb(231, 234, 241)
-    private var expanded = true
+    private val positioned = PositionedTranslationOverlay(context)
+    private var expanded = false
     private var attached = false
     private var compact = false
     private var paused = false
@@ -67,7 +71,7 @@ class TranslationOverlay(
         gravity = Gravity.CENTER
         setTypeface(typeface, Typeface.BOLD)
         background = rounded(Color.rgb(238, 242, 255), 28f).apply { setStroke(dp(1), Color.rgb(205, 215, 255)) }
-        contentDescription = "번역 카드 접기 또는 펼치기. 끌어서 이동"
+        contentDescription = "원문 위 번역과 번역 카드 전환. 끌어서 이동"
         elevation = dp(6).toFloat()
         setOnClickListener { toggleExpanded() }
     }
@@ -97,19 +101,48 @@ class TranslationOverlay(
             addView(pause)
             addView(stop)
         })
+        panel.visibility = View.GONE
         installDrag()
     }
 
     fun show() {
         resize()
-        manager.addView(panel, panelParams)
         try {
+            val positionedParams = params(-1, -1, Gravity.TOP or Gravity.START).apply {
+                title = "ScreenLingo positioned translation"
+                flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                setFitInsetsTypes(0)
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                // Android 12+ enforces its own touch obscuring limit for other apps.
+                alpha = if (Build.VERSION.SDK_INT >= 31)
+                    minOf(0.8f, context.getSystemService(InputManager::class.java).maximumObscuringOpacityForTouch)
+                else 1f
+            }
+            manager.addView(positioned, positionedParams)
+            manager.addView(panel, panelParams)
             manager.addView(bubble, bubbleParams)
             attached = true
         } catch (error: Exception) {
-            manager.removeView(panel)
+            runCatching { manager.removeView(positioned) }
+            runCatching { manager.removeView(panel) }
             throw error
         }
+    }
+
+    val positionsEnabled: Boolean get() = !expanded
+
+    fun clearPositions() { positioned.clear() }
+
+    /** Secure windows can obscure the original in a capture. Hide before sampling. */
+    fun hidePositionsForCapture(): Boolean {
+        val visible = positioned.visibility == View.VISIBLE
+        if (visible) clearPositions()
+        return visible
+    }
+
+    fun renderPositions(translations: List<PositionedTranslation>, width: Int, height: Int) {
+        if (!positionsEnabled || paused) return
+        positioned.setTranslations(translations, width, height, exclusionRects() + systemBarRects(width, height))
     }
 
     fun resize() {
@@ -146,6 +179,7 @@ class TranslationOverlay(
 
     fun render(snapshot: Map<String, Any>) {
         paused = snapshot["phase"] == "paused"
+        if (snapshot["phase"] != "running") clearPositions()
         updateHeading()
         pause.text = if (paused) "재개" else "멈춤"
         bubble.text = if (paused) "Ⅱ" else "가"
@@ -171,7 +205,7 @@ class TranslationOverlay(
         val left: Int
         val right: Int
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            val bars = insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+            val bars = insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             top = bars.top
             bottom = bars.bottom
             left = bars.left
@@ -191,6 +225,8 @@ class TranslationOverlay(
     fun close() {
         if (!attached) return
         attached = false
+        clearPositions()
+        runCatching { manager.removeView(positioned) }
         runCatching { manager.removeView(panel) }
         runCatching { manager.removeView(bubble) }
         body.text = ""
@@ -198,7 +234,9 @@ class TranslationOverlay(
 
     private fun toggleExpanded() {
         expanded = !expanded
+        clearPositions()
         panel.visibility = if (expanded) View.VISIBLE else View.GONE
+        onPresentationChanged()
     }
 
     private fun updateHeading() {

@@ -57,6 +57,7 @@ public final class ReleasePrivacyInstrumentation extends Instrumentation {
     private String layoutProbe = "not-measured";
     private static final String PACKAGE = "com.example.livescreentranslation";
     private static final String SERVICE = PACKAGE + ".capture.ScreenTranslationService";
+    private static final String DISPLAY_CONTROL = "원문 위 번역과 번역 카드 전환. 끌어서 이동";
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
@@ -146,6 +147,13 @@ public final class ReleasePrivacyInstrumentation extends Instrumentation {
             }
             practiceVerified = true;
             if (scenario.equals("reading-settings")) movePracticeBubble();
+            if (scenario.equals("privacy") && source.equals("en") && target.equals("ko")) {
+                stage = "positioned-default";
+                require(findNode(node -> label(node).equals("멈춤")) == null);
+                await(45000, this::positionedTranslationVisible);
+            }
+            stage = "open-translation-card";
+            clickDisplayControl();
             stage = "translation";
             // Only a native overlay TextView with the target's authored-text anchors counts.
             await(45000, () -> translationNode() != null);
@@ -288,7 +296,7 @@ public final class ReleasePrivacyInstrumentation extends Instrumentation {
 
     private void movePracticeBubble() {
         stage = "reading-bubble-position";
-        AccessibilityNodeInfo bubble = findNode(node -> "번역 카드 접기 또는 펼치기. 끌어서 이동".contentEquals(
+        AccessibilityNodeInfo bubble = findNode(node -> DISPLAY_CONTROL.contentEquals(
                 node.getContentDescription() == null ? "" : node.getContentDescription()));
         require(bubble != null);
         Rect bounds = new Rect();
@@ -298,7 +306,7 @@ public final class ReleasePrivacyInstrumentation extends Instrumentation {
         int endY = Math.round(60 * density);
         shellOutput("input swipe " + bounds.centerX() + " " + bounds.centerY() + " " + endX + " " + endY + " 500");
         await(5000, () -> {
-            AccessibilityNodeInfo moved = findNode(node -> "번역 카드 접기 또는 펼치기. 끌어서 이동".contentEquals(
+            AccessibilityNodeInfo moved = findNode(node -> DISPLAY_CONTROL.contentEquals(
                     node.getContentDescription() == null ? "" : node.getContentDescription()));
             AccessibilityNodeInfo sourceTitle = findNode(node -> label(node).contains("Find your") && label(node).contains("next little adventure."));
             if (moved == null || sourceTitle == null) return false;
@@ -307,6 +315,24 @@ public final class ReleasePrivacyInstrumentation extends Instrumentation {
             moved.getBoundsInScreen(newBounds);
             sourceTitle.getBoundsInScreen(titleBounds);
             return newBounds.left > displaySize().x / 2 && newBounds.bottom <= titleBounds.top;
+        });
+    }
+
+    private boolean positionedTranslationVisible() {
+        String windows = shellOutput("dumpsys window windows");
+        for (String window : windows.split("(?m)(?=^\\s*Window #\\d+ Window\\{)")) {
+            if (window.contains("ScreenLingo positioned translation") && window.contains("ty=APPLICATION_OVERLAY")
+                    && window.contains("NOT_TOUCHABLE") && window.contains("SECURE")
+                    && window.contains("mHasSurface=true") && window.contains("mViewVisibility=0x0")) return true;
+        }
+        return false;
+    }
+
+    private void clickDisplayControl() {
+        await(10000, () -> {
+            AccessibilityNodeInfo bubble = findNode(node -> DISPLAY_CONTROL.contentEquals(
+                    node.getContentDescription() == null ? "" : node.getContentDescription()));
+            return bubble != null && bubble.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         });
     }
 

@@ -1,7 +1,7 @@
 name: livescreentranslation
 description: "온디바이스 실시간 화면 번역 앱, ScreenLingo."
 publish_to: 'none'
-version: 0.1.9+10
+version: 0.1.12+13
 
 environment:
   sdk: ^3.12.2

@@ -134,7 +134,7 @@ class _TranslationHomeState extends State<TranslationHome>
         title: const Text('화면 번역을 시작할까요?'),
         content: const Text(
           '시작하면 화면에 보이는 텍스트를 주기적으로 읽어 번역해요. 민감한 정보가 있는 화면은 먼저 닫아 주세요.\n\n'
-          '캡처 이미지와 번역문은 저장하거나 서버로 전송하지 않아요. 기기 안에서 처리하며, 떠 있는 카드에서 언제든 종료할 수 있어요. 알림을 허용하면 알림창에서도 종료할 수 있어요.',
+          '화면 이미지와 번역문은 기기에서 처리하며 파일에 저장하거나 서버로 보내지 않아요. 동그란 버튼으로 카드를 열어 종료할 수 있어요.',
         ),
         actions: [
           TextButton(
@@ -280,7 +280,7 @@ class _TranslationHomeState extends State<TranslationHome>
           _SetupRow(
             icon: Icons.picture_in_picture_alt_rounded,
             title: '다른 앱 위에 표시',
-            detail: controller.overlayAllowed ? '허용됨' : '번역 카드를 표시하려면 필요합니다',
+            detail: controller.overlayAllowed ? '허용됨' : '화면 위에 번역을 표시하려면 필요합니다',
             done: controller.overlayAllowed,
             action: '허용하기',
             onTap: controller.locked ? null : controller.requestOverlay,
@@ -522,7 +522,7 @@ class _TranslationHomeState extends State<TranslationHome>
     const _GuideStep(
       number: '03',
       title: '읽고 싶은 앱 열기',
-      body: '다른 앱으로 이동하면 번역 카드가 따라와요. 동그란 버튼을 누르면 카드를 접고, 길게 끌면 버튼을 옮길 수 있어요.',
+      body: '번역문은 원문 위치에 표시돼요. 동그란 버튼을 누르면 번역 카드가 열려요.',
     ),
     const SizedBox(height: 14),
     FilledButton.tonalIcon(
@@ -699,7 +699,7 @@ class _TranslationHomeState extends State<TranslationHome>
       ),
     ),
     const SizedBox(height: 24),
-    _sectionTitle('개인정보와 처리 방식'),
+    _sectionTitle('개인정보'),
     const SizedBox(height: 10),
     const _Surface(
       child: Column(
@@ -708,12 +708,12 @@ class _TranslationHomeState extends State<TranslationHome>
           Icon(Icons.shield_outlined, color: _accent, size: 28),
           SizedBox(height: 12),
           Text(
-            '화면 처리 및 저장',
+            '화면 처리와 Google ML Kit',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
           SizedBox(height: 10),
           Text(
-            '화면 이미지와 번역문은 처리하는 동안 메모리에만 유지해요. 종료하면 지우며 파일이나 서버에 저장하지 않아요.\n\n언어 모델을 처음 준비할 때는 Google에서 모델을 다운로드해요. 준비한 뒤에는 인터넷 없이 번역할 수 있어요.\n\n텍스트 인식과 번역: Google ML Kit\nGoogle Translate의 자동 번역을 사용합니다.',
+            '화면 이미지와 번역문은 번역 중 메모리에서만 처리해요. 번역을 끝내면 지우고 파일에 저장하거나 서버로 보내지 않아요.\n\n언어 모델은 Google에서 다운로드해요. 모델을 준비하면 인터넷 연결 없이 화면을 번역할 수 있어요.\n\nGoogle ML Kit는 진단과 서비스 개선을 위해 기기·앱 정보, 설치 식별자, 성능·오류 지표, 선택한 언어를 Google로 전송할 수 있어요.',
             style: TextStyle(color: _muted, fontSize: 13, height: 1.7),
           ),
         ],
@@ -733,7 +733,7 @@ class _TranslationHomeState extends State<TranslationHome>
     ),
     const SizedBox(height: 22),
     const Text(
-      'ScreenLingo 0.1.9 · Android 11 이상',
+      'ScreenLingo 0.1.12 · Android 11 이상',
       textAlign: TextAlign.center,
       style: TextStyle(color: _muted, fontSize: 11),
     ),
