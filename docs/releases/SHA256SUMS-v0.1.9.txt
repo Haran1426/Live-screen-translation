@@ -1,0 +1,3 @@
+4e3730bfde0d7a9f9110ab832bd6224641bf7c94b31b329ed8a58ee4444f18fd  ScreenLingo-0.1.9-android-arm64-v8a.apk
+2c3123f7731e4b703e5b3b395a00814c8a16b4484133252b6a89bdcbb0ad2799  ScreenLingo-0.1.9-android-armeabi-v7a.apk
+235d908c52603815af1f5ce66bf14dce950c8bc3a3a529649cfaa3727247e28c  ScreenLingo-0.1.9-android-x86_64.apk

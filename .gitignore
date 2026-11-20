@@ -44,5 +44,14 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Widget Preview related
-.widget_preview/
+# Generated local QA captures and downloaded reference archives
+/artifacts/
+/docs/qa/
+/android/.kotlin/
+*.apk
+*.aab
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
