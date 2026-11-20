@@ -24,6 +24,8 @@
 
 릴리스는 R8 최적화를 유지한다. ML Kit의 오래된 firebase-components 의존성이 기본 생성자 보존 규칙을 누락해 초기화가 실패하므로 `proguard-rules.pro`에서 ComponentRegistrar의 기본 생성자만 보존한다. SDK 전체 최적화를 끄지 않는다. [Firebase upstream 수정](https://github.com/firebase/firebase-android-sdk/pull/6044)을 참고했으며 실제 release APK 설치로 검증한다.
 
+일반 release 빌드는 `preReleaseBuild`의 서명 검사를 필수로 거친다. 비공개 키 설정의 완전성/키 접근/인증서 유효기간을 검사하고 Android Debug 인증서는 거부한다. 자동 debug fallback은 없다. 작성된 샘플의 에뮬레이터 QA에만 `screenlingoQaDebugSigning=true`를 명시해 기존 debug 인증서와 최적화 설정을 사용한다. `verify-privacy.ps1`은 각 빌드 명령 인자로만 이 값을 전달하고 환경/프로젝트/전역 설정에 저장하지 않는다. 서명 검사는 ARM64·실제 기기 동작 검사와 별개다. [배포 조건](RELEASE.md).
+
 ## 상태와 비동기 경계
 
 idle/error → Android 동의 → starting → running ↔ paused → idle/error.

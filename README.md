@@ -52,7 +52,7 @@ flutter run -d <android-device>
 flutter build apk --release --split-per-abi
 ```
 
-ABI별 APK는 `build/app/outputs/flutter-apk/`에 생성됩니다. 현재 release도 개발용 debug 서명이며 정식 배포용이 아닙니다. 새 키를 생성하거나 스토어에 올리는 작업은 별도입니다.
+ABI별 APK는 `build/app/outputs/flutter-apk/`에 생성됩니다. 일반 release 빌드는 이제 별도 배포 키 설정이 필수이며, 키가 없거나 debug 인증서이면 실패합니다. 게시된 v0.1.9는 기존 개발용 서명입니다. [배포 서명과 정식 릴리스 조건](docs/RELEASE.md)을 따릅니다.
 
 메모리가 제한된 Windows 환경에서는 프로젝트/전역 설정을 바꾸지 않고 해당 프로세스의 Gradle 자원만 제한할 수 있습니다.
 
@@ -72,6 +72,7 @@ Android 단위/lint 검사는 `android/gradlew`(Windows: `gradlew.bat`)의 `:app
 - [기기 QA](docs/QA.md) · [QA 환경](docs/QA_ENVIRONMENT.md)
 - [다국어 검증 범위](docs/MULTILINGUAL_QA.md) · [로그 보호](docs/SECURITY.md)
 - [초기 학습·개발 계획](docs/learning-plan.md) · [변경 기록](CHANGELOG.md)
+- [배포 준비와 서명](docs/RELEASE.md)
 - [Google Translate 자산 출처](assets/branding/README.md)
 
 기존 MIT 라이선스를 유지합니다. Google 출처 배지는 Google의 상표/브랜드 지침에 따르며 앱 자체 로고나 제휴 표시가 아닙니다. 정기 개발의 실행/일시중지 상태는 사용자의 Codex 자동화 설정을 따릅니다.

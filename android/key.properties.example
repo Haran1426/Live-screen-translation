@@ -1,0 +1,7 @@
+# Copy to ignored android/key.properties or set SCREENLINGO_KEY_PROPERTIES to
+# an external private properties file. Relative storeFile paths use its folder.
+# Never commit the real properties file, keystore, or passwords.
+storeFile=screenlingo-release.jks
+storePassword=REPLACE_WITH_PRIVATE_PASSWORD
+keyAlias=screenlingo
+keyPassword=REPLACE_WITH_PRIVATE_PASSWORD

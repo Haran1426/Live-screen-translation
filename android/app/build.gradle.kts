@@ -1,3 +1,8 @@
+import java.security.KeyStore
+import java.security.cert.X509Certificate
+import java.util.Properties
+import javax.naming.ldap.LdapName
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -5,6 +10,65 @@ plugins {
 }
 
 val privacyTestBuildType = providers.gradleProperty("screenlingoTestBuildType").getOrElse("debug")
+val qaDebugSigning = providers.gradleProperty("screenlingoQaDebugSigning").orNull == "true"
+val releaseKeyPropertiesFile = providers.environmentVariable("SCREENLINGO_KEY_PROPERTIES")
+    .orNull?.let { rootProject.file(it) } ?: rootProject.file("key.properties")
+val releaseKeyProperties = Properties().apply {
+    if (releaseKeyPropertiesFile.isFile) releaseKeyPropertiesFile.inputStream().use { load(it) }
+}
+val releaseSigningFields = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val releaseSigningAvailable = releaseSigningFields.all {
+    !releaseKeyProperties.getProperty(it).isNullOrBlank()
+}
+val releaseStoreFile = releaseKeyProperties.getProperty("storeFile")?.let {
+    releaseKeyPropertiesFile.parentFile.resolve(it)
+}
+
+// Optimized QA APKs deliberately share the debug identity to retain fixture models.
+// Distribution builds must never silently fall back to that identity.
+val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
+    group = "verification"
+    description = "Reject missing, invalid, or debug distribution signing credentials."
+    doLast {
+        if (qaDebugSigning) {
+            logger.warn("SCREENLINGO_QA_ONLY: debug-signed optimized APK; not for distribution.")
+        } else {
+            if (!releaseSigningAvailable || releaseStoreFile?.isFile != true) {
+                throw GradleException(
+                    "SCREENLINGO_RELEASE_SIGNING_REQUIRED: configure private key.properties " +
+                        "or SCREENLINGO_KEY_PROPERTIES. Debug signing is available only for " +
+                        "authored QA with -PscreenlingoQaDebugSigning=true."
+                )
+            }
+            try {
+                val password = releaseKeyProperties.getProperty("storePassword").toCharArray()
+                val keyPassword = releaseKeyProperties.getProperty("keyPassword").toCharArray()
+                try {
+                    val keyStore = KeyStore.getInstance(releaseStoreFile, password)
+                    val alias = releaseKeyProperties.getProperty("keyAlias")
+                    check(keyStore.isKeyEntry(alias))
+                    check(keyStore.getKey(alias, keyPassword) is java.security.PrivateKey)
+                    val certificate = keyStore.getCertificate(alias) as X509Certificate
+                    certificate.checkValidity()
+                    check(LdapName(certificate.subjectX500Principal.name).rdns.none {
+                        it.type.equals("CN", ignoreCase = true) &&
+                            it.value.toString().equals("Android Debug", ignoreCase = true)
+                    })
+                } finally {
+                    password.fill('\u0000')
+                    keyPassword.fill('\u0000')
+                }
+            } catch (_: Exception) {
+                // Never include exceptions containing private paths or credential values.
+                throw GradleException("SCREENLINGO_RELEASE_SIGNING_INVALID: release key validation failed.")
+            }
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") dependsOn(verifyReleaseSigning)
+}
 
 android {
     namespace = "com.example.livescreentranslation"
@@ -40,12 +104,25 @@ android {
     }
     testBuildType = privacyTestBuildType
 
+    signingConfigs {
+        if (releaseSigningAvailable && !qaDebugSigning) {
+            create("distribution") {
+                storeFile = releaseStoreFile
+                storePassword = releaseKeyProperties.getProperty("storePassword")
+                keyAlias = releaseKeyProperties.getProperty("keyAlias")
+                keyPassword = releaseKeyProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = when {
+                qaDebugSigning -> signingConfigs.getByName("debug")
+                releaseSigningAvailable -> signingConfigs.getByName("distribution")
+                else -> null
+            }
         }
     }
 }

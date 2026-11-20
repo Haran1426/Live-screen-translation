@@ -183,9 +183,9 @@ try {
     if ($Variant -in @('release', 'both')) {
         # A release-only run requires English/Korean models prepared by the debug fixture.
         if (-not $SkipBuild) {
-            Invoke-Checked $flutter @('build', 'apk', '--release', '--split-per-abi')
+            Invoke-Checked $flutter @('build', 'apk', '--release', '--split-per-abi', '--android-project-arg=screenlingoQaDebugSigning=true')
             Push-Location android
-            try { Invoke-Checked '.\gradlew.bat' @(':app:assembleReleaseAndroidTest', '-PscreenlingoTestBuildType=release', '--console=plain') }
+            try { Invoke-Checked '.\gradlew.bat' @(':app:assembleReleaseAndroidTest', '-PscreenlingoTestBuildType=release', '-PscreenlingoQaDebugSigning=true', '--console=plain') }
             finally { Pop-Location }
         }
         $appApk = Get-FixtureApk 'release'

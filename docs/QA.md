@@ -39,7 +39,7 @@
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 Push-Location android
-.\gradlew.bat :app:assembleReleaseAndroidTest -PscreenlingoTestBuildType=release --console=plain
+.\gradlew.bat :app:assembleReleaseAndroidTest -PscreenlingoTestBuildType=release -PscreenlingoQaDebugSigning=true --console=plain
 Pop-Location
 .\scripts\verify-privacy.ps1 -Variant release -SkipBuild -ReleaseScenario revoke-overlay
 .\scripts\verify-privacy.ps1 -Variant release -SkipBuild -ReleaseScenario screen-lock
@@ -62,7 +62,7 @@ API30에서는 `scripts/api30-qa.ps1`로 장치를 시작하고 위 검사에 `-
 
 - 좁은 화면과 큰 글꼴에서 잘림/RenderFlex 예외 확인.
 - 어두운 시스템 테마, 디스플레이 확대, TalkBack, 접이식/가로 화면 확인.
-- 기본 홈의 예시는 디자인 예시임을 알 수 있어야 함.
+- 홈에 모의 번역 결과가 없어야 함. 설정의 글자 샘플은 실제 번역과 구분해야 함.
 
 ## 캡처 제한
 
